@@ -1,101 +1,70 @@
 # app.py
 import pandas as pd
 import yfinance as yf
-from flask import Flask, render_template, request, g
+from flask import Flask, render_template, request
 import os
 import logging
-import time
-from sqlalchemy import create_engine, Column, Integer, String, Float, MetaData
-from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
-from sqlalchemy.exc import SQLAlchemyError
 import sys
 
-# --- Initial Debug Print ---
-print("--- app.py starting execution ---", flush=True)
-
 # --- Configuration ---
-# Database URL comes from environment variable
-DATABASE_URL = os.environ.get('DATABASE_URL')
-# --- Debug Print for DATABASE_URL ---
-print(f"--- DATABASE_URL read from environment: {DATABASE_URL}", flush=True)
-
-if not DATABASE_URL:
-    logging.error("FATAL: DATABASE_URL environment variable not set.")
-    # sys.exit("Database URL is required.") # Keep this commented for now
+PORTFOLIO_CSV = 'portfolio.csv' # Name of your portfolio CSV file
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
 
-# --- Database Setup (SQLAlchemy) ---
-engine = None
-SessionLocal = None
-Base = declarative_base()
-
-print(f"--- Attempting to create engine with URL: {DATABASE_URL}", flush=True)
-try:
-    if DATABASE_URL:
-        engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 10})
-        SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-        Base.metadata.bind = engine
-        logging.info("Database engine created successfully.")
-    else:
-         logging.warning("Database URL not provided, database features disabled.")
-
-except SQLAlchemyError as e:
-    logging.error(f"Error creating database engine or connecting: {e}", exc_info=True)
-    engine = None
-    SessionLocal = None
-# --- Debug Print after Engine Attempt ---
-print("--- Engine creation attempted (check logs for success/error) ---", flush=True)
-
-
-# --- Database Model ---
-class Holding(Base):
-    __tablename__ = 'holdings' # Table name
-
-    id = Column(Integer, primary_key=True, index=True)
-    ticker = Column(String, unique=True, index=True, nullable=False)
-    quantity = Column(Float, nullable=False) # Use Float for quantity flexibility
-    cost_basis = Column(Float, nullable=False) # Total cost basis (integer from CSV stored as float)
-
-    def __repr__(self):
-        return f"<Holding(ticker='{self.ticker}', quantity={self.quantity}, cost_basis={self.cost_basis})>"
-
 # --- Flask App Initialization ---
 app = Flask(__name__)
-print("--- Flask app object created ---", flush=True) # Added another print
-
-# --- Request Teardown for DB Session ---
-@app.teardown_appcontext
-def remove_session(*args, **kwargs):
-    """Closes the database session after each request."""
-    if SessionLocal:
-        SessionLocal.remove()
 
 # --- Helper Functions ---
-def get_db():
-    """Provides a database session per request."""
-    if not SessionLocal:
-        logging.error("Database session factory not initialized.")
-        return None
-    return SessionLocal()
-
-def load_portfolio_from_db():
-    """Loads portfolio data from the PostgreSQL database."""
-    db = get_db()
-    if not db: return []
-
+def load_portfolio_from_csv(csv_path):
+    """Loads portfolio data from a CSV file including CostBasis."""
+    required_columns = ['Ticker', 'Quantity', 'CostBasis']
     try:
-        holdings = db.query(Holding).order_by(Holding.ticker).all()
-        logging.info(f"Successfully loaded {len(holdings)} holdings from database.")
-        return holdings
-    except SQLAlchemyError as e:
-        logging.error(f"Error loading portfolio from database: {e}", exc_info=True)
-        db.rollback()
-        return []
+        if not os.path.exists(csv_path) or os.path.getsize(csv_path) == 0:
+            logging.warning(f"'{csv_path}' not found or is empty. Returning empty DataFrame.")
+            return pd.DataFrame(columns=required_columns)
+
+        # Read the CSV
+        portfolio_df = pd.read_csv(csv_path)
+
+        # --- Validation ---
+        if not all(col in portfolio_df.columns for col in required_columns):
+            missing = [col for col in required_columns if col not in portfolio_df.columns]
+            raise ValueError(f"CSV must contain required columns. Missing: {missing}")
+
+        # --- Type Conversion & Cleaning ---
+        portfolio_df['Ticker'] = portfolio_df['Ticker'].astype(str).str.strip()
+        portfolio_df['Quantity'] = pd.to_numeric(portfolio_df['Quantity'], errors='coerce')
+        # CostBasis should be numeric (handles integers from your last CSV format)
+        portfolio_df['CostBasis'] = pd.to_numeric(portfolio_df['CostBasis'], errors='coerce')
+
+        # Drop rows where essential numeric conversions failed or quantity is zero
+        original_rows = len(portfolio_df)
+        portfolio_df.dropna(subset=['Quantity', 'CostBasis'], inplace=True)
+        portfolio_df = portfolio_df[portfolio_df['Quantity'] > 0] # Remove rows with 0 quantity
+
+        if len(portfolio_df) < original_rows:
+             logging.warning(f"Dropped {original_rows - len(portfolio_df)} rows due to invalid/zero numeric data in Quantity or CostBasis.")
+
+        logging.info(f"Successfully loaded and validated portfolio from '{csv_path}'.")
+        return portfolio_df
+
+    except pd.errors.EmptyDataError:
+        logging.warning(f"'{csv_path}' is empty. Returning empty DataFrame.")
+        return pd.DataFrame(columns=required_columns)
+    except FileNotFoundError:
+        logging.error(f"Error: Portfolio file '{csv_path}' not found.")
+        return pd.DataFrame(columns=required_columns)
+    except ValueError as ve:
+        logging.error(f"Data validation error in '{csv_path}': {ve}")
+        return pd.DataFrame(columns=required_columns)
+    except Exception as e:
+        logging.error(f"An unexpected error occurred while loading '{csv_path}': {e}", exc_info=True)
+        return pd.DataFrame(columns=required_columns)
 
 def get_stock_data(tickers):
     """Fetches current stock data using yfinance."""
+    # (This function remains the same)
     if not tickers:
         logging.info("No tickers provided to fetch data for.")
         return {}
@@ -143,17 +112,13 @@ def get_stock_data(tickers):
                     if ticker in data.columns.get_level_values(0) and 'Close' in data[ticker].columns and not data[ticker]['Close'].empty:
                          current_price = data[ticker]['Close'].iloc[-1]
                          price_data_available = True
-                    # else: logging.warning(f"Price data issue for {ticker} in multi-index.") # Reduce log noise
                 elif ticker in data.columns and 'Close' in data.columns and not data['Close'].empty:
                      current_price = data['Close'].iloc[-1]
                      price_data_available = True
-                # else: logging.warning(f"Could not find valid price data for {ticker} in download results.") # Reduce log noise
 
                 if price_data_available and current_price is not None and not pd.isna(current_price):
                     stock_data[ticker] = {'current_price': current_price, 'currency': currency, 'short_name': short_name}
-                    # logging.info(f"Processed {ticker}: Price={current_price}, Currency={currency}") # Reduce log noise
                 else:
-                    # logging.warning(f"Could not determine valid price for {ticker} from download data.") # Reduce log noise
                     stock_data[ticker] = {'current_price': 0, 'currency': currency, 'short_name': f"{short_name} (Price N/A)"}
             except Exception as e_ticker:
                 logging.error(f"Error processing data for ticker {ticker}: {e_ticker}", exc_info=True)
@@ -167,32 +132,35 @@ def get_stock_data(tickers):
 # --- Flask Routes ---
 @app.route('/', methods=['GET'])
 def index():
-    """Main route to display the portfolio from database with gain/loss."""
-    print("--- Request received for / route ---", flush=True) # Added print
+    """Main route to display the portfolio from CSV with gain/loss."""
+    portfolio_df = load_portfolio_from_csv(PORTFOLIO_CSV) # Load from CSV
     portfolio_details = []
     error_message = None
     total_portfolio_value = 0.0
     total_portfolio_cost_basis = 0.0
     total_portfolio_gain_loss = 0.0
 
-    if not engine or not SessionLocal:
-        error_message = "Database connection not configured or failed. Check logs and DATABASE_URL environment variable."
-        logging.error(error_message) # Log the error too
-        holdings = []
-    else:
-        holdings = load_portfolio_from_db()
-        if not holdings and not error_message:
-             error_message = "Portfolio database table is empty. Consider seeding initial data (see documentation/seed script)."
+    # Check CSV status
+    if not os.path.exists(PORTFOLIO_CSV):
+        error_message = f"Error: '{PORTFOLIO_CSV}' not found."
+    elif portfolio_df.empty and os.path.exists(PORTFOLIO_CSV) and os.path.getsize(PORTFOLIO_CSV) == 0:
+         error_message = f"'{PORTFOLIO_CSV}' is empty. Please add Ticker,Quantity,CostBasis data."
+    elif portfolio_df.empty and os.path.exists(PORTFOLIO_CSV):
+         error_message = f"Could not load valid data from '{PORTFOLIO_CSV}'. Check format (Ticker,Quantity,CostBasis) and logs."
 
-    if holdings:
-        tickers = [h.ticker for h in holdings]
-        logging.info(f"Tickers loaded from DB: {tickers}")
+    if not portfolio_df.empty:
+        tickers = portfolio_df['Ticker'].unique().tolist()
+        logging.info(f"Tickers loaded from CSV: {tickers}")
         stock_data = get_stock_data(tickers)
 
-        for holding in holdings:
-            ticker = holding.ticker
-            quantity = holding.quantity
-            cost_basis = holding.cost_basis
+        # Calculate current value and gain/loss for each holding from DataFrame
+        for index, row in portfolio_df.iterrows(): # Iterate over DataFrame rows
+            ticker = row['Ticker']
+            quantity = row['Quantity']
+            cost_basis = row['CostBasis'] # Get CostBasis directly from row
+
+            # Skip if essential data is missing (already checked in load_portfolio_from_csv)
+            # if not ticker or pd.isna(quantity) or pd.isna(cost_basis): continue # Redundant check
 
             data = stock_data.get(ticker)
             current_price = 0
@@ -204,13 +172,14 @@ def index():
             short_name = ticker
 
             try:
+                # Values from DataFrame should be numeric types after load
                 quantity = float(quantity)
                 cost_basis = float(cost_basis)
 
                 if quantity != 0: avg_purchase_price = cost_basis / quantity
                 else: avg_purchase_price = 0
 
-                total_portfolio_cost_basis += cost_basis
+                total_portfolio_cost_basis += cost_basis # Sum (mixes currencies)
 
                 if data and data.get('current_price') is not None and data['current_price'] > 0:
                     current_price = float(data['current_price'])
@@ -220,8 +189,8 @@ def index():
 
                     currency = data.get('currency', 'N/A')
                     short_name = data.get('short_name', ticker)
-                    total_portfolio_value += current_value
-                    total_portfolio_gain_loss += gain_loss
+                    total_portfolio_value += current_value # Sum (mixes currencies)
+                    total_portfolio_gain_loss += gain_loss # Sum (mixes currencies)
                 else:
                     short_name = data.get('short_name', f"{ticker} (Load Error)") if data else f"{ticker} (Not Found)"
                     currency = data.get('currency', 'N/A') if data else 'N/A'
@@ -243,6 +212,10 @@ def index():
             except Exception as e:
                  logging.error(f"Unexpected error during calculation for {ticker}: {e}", exc_info=True)
 
+    # Sort portfolio details alphabetically by ticker
+    portfolio_details.sort(key=lambda x: x['ticker'])
+
+    # Determine the primary currency for display purposes (still mixes values)
     primary_currency = 'USD'
     if portfolio_details:
         valid_currencies = [p['currency'] for p in portfolio_details if p['currency'] != 'N/A' and p.get('current_value', 0) > 0]
@@ -252,27 +225,25 @@ def index():
         elif any(p['currency'] != 'N/A' for p in portfolio_details):
              primary_currency = next((p['currency'] for p in portfolio_details if p['currency'] != 'N/A'), 'USD')
 
+    # *** Reminder: Totals below mix currencies and are not financially precise ***
     return render_template('index.html',
-                           portfolio=portfolio_details, total_value=total_portfolio_value,
-                           total_cost_basis=total_portfolio_cost_basis, total_gain_loss=total_portfolio_gain_loss,
-                           primary_currency=primary_currency, error_message=error_message,
-                           portfolio_csv_name=None)
+                           portfolio=portfolio_details,
+                           total_value=total_portfolio_value,
+                           total_cost_basis=total_portfolio_cost_basis,
+                           total_gain_loss=total_portfolio_gain_loss,
+                           primary_currency=primary_currency, # Label for the inaccurate totals
+                           error_message=error_message,
+                           portfolio_csv_name=PORTFOLIO_CSV) # Pass CSV name back
 
-# --- Main Execution (for local testing) ---
+
+# --- Main Execution ---
 if __name__ == '__main__':
-    # This block does NOT run when using Gunicorn in Docker
-    logging.info("Starting Flask development server (for local testing only)...")
-    # ... (rest of __main__ block remains the same) ...
-    if not DATABASE_URL:
-         print("\nWARNING: DATABASE_URL not set. Database features will likely fail.", file=sys.stderr)
-         print("For local testing, set it like: export DATABASE_URL='postgresql://user:pass@host:port/db'\n", file=sys.stderr)
-    if engine:
-        try:
-             logging.info("Creating database tables if they don't exist (needed for local run)...")
-             Base.metadata.create_all(bind=engine)
-             logging.info("Tables checked/created.")
-        except SQLAlchemyError as e:
-             logging.error(f"Error creating tables during local startup: {e}", exc_info=True)
-
-    app.run(debug=False, host='0.0.0.0', port=5001)
+    logging.info("Starting Flask development server...")
+    # Ensure the portfolio CSV exists before starting
+    if not os.path.exists(PORTFOLIO_CSV):
+         print(f"\nERROR: '{PORTFOLIO_CSV}' not found. Please create it with Ticker,Quantity,CostBasis columns.\n", file=sys.stderr)
+    # Run the Flask development server
+    # Host 0.0.0.0 makes it accessible on the local network
+    # Debug=True is helpful for local development
+    app.run(debug=True, host='0.0.0.0', port=5001)
 
