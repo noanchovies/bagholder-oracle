@@ -1,23 +1,27 @@
 # app.py
 import pandas as pd
 import yfinance as yf
-from flask import Flask, render_template, request, g # Added g for session management
+from flask import Flask, render_template, request, g
 import os
 import logging
 import time
 from sqlalchemy import create_engine, Column, Integer, String, Float, MetaData
 from sqlalchemy.orm import sessionmaker, declarative_base, scoped_session
 from sqlalchemy.exc import SQLAlchemyError
-import sys # For flushing print output in seeding
+import sys
+
+# --- Initial Debug Print ---
+print("--- app.py starting execution ---", flush=True)
 
 # --- Configuration ---
 # Database URL comes from environment variable
 DATABASE_URL = os.environ.get('DATABASE_URL')
+# --- Debug Print for DATABASE_URL ---
+print(f"--- DATABASE_URL read from environment: {DATABASE_URL}", flush=True)
+
 if not DATABASE_URL:
     logging.error("FATAL: DATABASE_URL environment variable not set.")
-    # Provide a default for local testing ONLY if desired, otherwise error is good
-    # DATABASE_URL = "postgresql://user:password@localhost:5432/portfolio_db" # Example
-    # sys.exit("Database URL is required.") # Uncomment to force exit
+    # sys.exit("Database URL is required.") # Keep this commented for now
 
 # Configure logging
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - [%(filename)s:%(lineno)d] - %(message)s')
@@ -27,24 +31,23 @@ engine = None
 SessionLocal = None
 Base = declarative_base()
 
+print(f"--- Attempting to create engine with URL: {DATABASE_URL}", flush=True)
 try:
     if DATABASE_URL:
-        # Connect Timeout added: useful for initial connection checks
         engine = create_engine(DATABASE_URL, connect_args={"connect_timeout": 10})
-        # Use scoped_session for thread-local sessions managed by Flask request context
         SessionLocal = scoped_session(sessionmaker(autocommit=False, autoflush=False, bind=engine))
-        Base.metadata.bind = engine # Bind Base to engine
+        Base.metadata.bind = engine
         logging.info("Database engine created successfully.")
-        # Optional: Test connection early
-        # with engine.connect() as connection:
-        #     logging.info("Database connection test successful.")
     else:
          logging.warning("Database URL not provided, database features disabled.")
 
 except SQLAlchemyError as e:
     logging.error(f"Error creating database engine or connecting: {e}", exc_info=True)
-    engine = None # Ensure engine is None if creation failed
+    engine = None
     SessionLocal = None
+# --- Debug Print after Engine Attempt ---
+print("--- Engine creation attempted (check logs for success/error) ---", flush=True)
+
 
 # --- Database Model ---
 class Holding(Base):
@@ -60,6 +63,7 @@ class Holding(Base):
 
 # --- Flask App Initialization ---
 app = Flask(__name__)
+print("--- Flask app object created ---", flush=True) # Added another print
 
 # --- Request Teardown for DB Session ---
 @app.teardown_appcontext
@@ -164,6 +168,7 @@ def get_stock_data(tickers):
 @app.route('/', methods=['GET'])
 def index():
     """Main route to display the portfolio from database with gain/loss."""
+    print("--- Request received for / route ---", flush=True) # Added print
     portfolio_details = []
     error_message = None
     total_portfolio_value = 0.0
@@ -172,6 +177,7 @@ def index():
 
     if not engine or not SessionLocal:
         error_message = "Database connection not configured or failed. Check logs and DATABASE_URL environment variable."
+        logging.error(error_message) # Log the error too
         holdings = []
     else:
         holdings = load_portfolio_from_db()
@@ -254,7 +260,9 @@ def index():
 
 # --- Main Execution (for local testing) ---
 if __name__ == '__main__':
+    # This block does NOT run when using Gunicorn in Docker
     logging.info("Starting Flask development server (for local testing only)...")
+    # ... (rest of __main__ block remains the same) ...
     if not DATABASE_URL:
          print("\nWARNING: DATABASE_URL not set. Database features will likely fail.", file=sys.stderr)
          print("For local testing, set it like: export DATABASE_URL='postgresql://user:pass@host:port/db'\n", file=sys.stderr)
@@ -266,5 +274,5 @@ if __name__ == '__main__':
         except SQLAlchemyError as e:
              logging.error(f"Error creating tables during local startup: {e}", exc_info=True)
 
-    # Run Flask dev server (Gunicorn is used in Docker)
     app.run(debug=False, host='0.0.0.0', port=5001)
+
