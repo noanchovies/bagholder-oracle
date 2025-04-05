@@ -1,9 +1,25 @@
 # Bagholder Oracle
 
-A personal stock portfolio tracker and dashboard built with Python, Flask, and yfinance. Displays current holdings, calculates performance metrics, shows historical trends (simplified), and includes a daily meme from WallStreetBets.
+A responsive, interactive stock portfolio tracker and dashboard built with Python, Flask, and yfinance. 
+Displays current holdings, calculates performance metrics, shows historical trends (simplified)
 
+## V1 - V2 - V3 _(includes a daily meme from WallStreetBets_) 
+<img src="https://github.com/noanchovies/bagholder-oracle/blob/master/readme-images/V1.png" alt="V1" style="width:32%;"/> <img src="https://github.com/noanchovies/bagholder-oracle/blob/master/readme-images/V2.png" alt="V2" style="width:30%;"/><img src="https://github.com/noanchovies/bagholder-oracle/blob/master/readme-images/V3.png" alt="V3" style="width:60%;"/>
 
+## Technology Stack
+
+* **Backend:** Python 3, Flask
+* **Data Fetching:** pandas, yfinance
+* **Frontend:** HTML, Tailwind CSS, JavaScript
+* **Charting:** Chart.js, chartjs-adapter-date-fns
+* **Icons:** lucide-static
 ## Features
+
+* **Table Interactivity:**
+    * Client-side sorting by Ticker, Current Price, and Gain/Loss %.
+    * "Toggle Details" button to show/hide Quantity, Avg. Purchase Price, Cost Basis columns.
+    * "Hide FAANG RSU" button to show/hide specific RSU tickers (defaults to hidden).
+    * "Public Mode" button to hide all absolute monetary and quantity values, showing only Ticker and Gain/Loss %.
 
 * **Portfolio Overview:** Displays holdings read from a local CSV file.
 * **Performance Metrics:** Calculates and shows:
@@ -13,26 +29,16 @@ A personal stock portfolio tracker and dashboard built with Python, Flask, and y
     * Current Value
     * Absolute Gain / Loss
     * Percentage Gain / Loss
+
 * **Dashboard Widgets:**
     * Summary cards for Total Current Value (with Cost Basis note) and Total Gain/Loss.
     * Conditionally displayed breakdown cards for RSU vs Non-RSU Gain/Loss.
     * Historical charts (Value & Gain/Loss) with timeframe selectors (1M, 6M, YTD, 1Y, 2Y, 5Y, Max). **Note:** Uses simplified historical data based on current holdings.
     * "Meme of the Day" widget fetching from `meme-api.com` (r/wallstreetbets).
-* **Table Interactivity:**
-    * Client-side sorting by Ticker, Current Price, and Gain/Loss %.
-    * "Toggle Details" button to show/hide Quantity, Avg. Purchase Price, Cost Basis columns.
-    * "Hide FAANG RSU" button to show/hide specific RSU tickers (defaults to hidden).
-    * "Public Mode" button to hide all absolute monetary and quantity values, showing only Ticker and Gain/Loss %.
+
 * **UI Persistence:** Toggle button states (Details, RSU, Public Mode) are saved in the browser's `localStorage`.
 * **Styling:** Uses Tailwind CSS (via CDN) and Lucide icons.
 
-## Technology Stack
-
-* **Backend:** Python 3, Flask
-* **Data Fetching:** pandas, yfinance
-* **Frontend:** HTML, Tailwind CSS, JavaScript
-* **Charting:** Chart.js, chartjs-adapter-date-fns
-* **Icons:** lucide-static
 
 ## Setup and Running (Local CSV Mode)
 
@@ -70,15 +76,15 @@ A personal stock portfolio tracker and dashboard built with Python, Flask, and y
     * It **must** have the columns: `Ticker`, `Quantity`, `CostBasis`.
     * `Ticker`: The stock ticker symbol recognized by Yahoo Finance (e.g., `MSFT`, `VWCE.DE`).
     * `Quantity`: The number of shares held (can be float or integer).
-    * `CostBasis`: The **total** cost basis for the entire quantity held (use standard numbers, e.g., `102100` for 102,100 EUR, `5050.75` for $5050.75). Do **not** use thousands separators.
+    * `CostBasis`: The **total** cost basis for the entire quantity held (use standard numbers, e.g., `102100` for 102,100 EUR, `500050.75` for $500050.75). Do **not** use thousands separators.
     * **Example `portfolio.csv`:**
         ```csv
         Ticker,Quantity,CostBasis
-        VWCE.DE,787,102100
-        VUAA.DE,853,87231
-        MSFT,13,5050
-        META,139,30569
-        GOOG,40,5596
+        VWCE.DE,xxxx,xxxxxxx
+        VUAA.DE,xxxx,xxxxxxx
+        MSFT,xxxx,xxxxxxx
+        META,xxxx,xxxxxxx
+        GOOG,xxxx,xxxxxxx
         ```
     * **Note:** This file is listed in `.gitignore` and should not be committed to version control.
 
