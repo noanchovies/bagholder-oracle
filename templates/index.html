@@ -3,144 +3,152 @@
 <head>
     <meta charset="UTF-8">
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
-    <title>My Stock Portfolio</title>
+    <title>Bagholder Oracle Dashboard</title>
     <script src="https://cdn.tailwindcss.com"></script>
-    <script>
-        tailwind.config = {
-            theme: {
-                extend: {
-                    fontFamily: {
-                        sans: ['Inter', 'sans-serif'],
-                    },
-                    colors: {
-                        gain: '#10B981', // Emerald 500 for gains
-                        loss: '#EF4444', // Red 500 for losses
-                    }
-                }
-            }
-        }
-    </script>
+    <script src="https://cdn.jsdelivr.net/npm/chart.js@4.4.3/dist/chart.umd.min.js"></script>
+    <script src="https://cdn.jsdelivr.net/npm/chartjs-adapter-date-fns@3.0.0/dist/chartjs-adapter-date-fns.bundle.min.js"></script>
+    <script> /* Tailwind Config */ tailwind.config = { theme: { extend: { fontFamily: { sans: ['Inter', 'sans-serif'], }, colors: { gain: '#10B981', loss: '#EF4444', } } } } </script>
     <link rel="preconnect" href="https://fonts.googleapis.com">
     <link rel="preconnect" href="https://fonts.gstatic.com" crossorigin>
     <link href="https://fonts.googleapis.com/css2?family=Inter:wght@400;500;600;700&display=swap" rel="stylesheet">
     <style>
-        tbody tr:nth-child(odd) { background-color: #f9fafb; } /* gray-50 */
-        tbody tr:hover { background-color: #f3f4f6; } /* gray-100 */
-        .table-container { overflow-x: auto; max-width: 100%; -webkit-overflow-scrolling: touch; }
-        .table-container::-webkit-scrollbar { height: 8px; }
-        .table-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; }
-        .table-container::-webkit-scrollbar-thumb { background: #a0aec0; border-radius: 10px; } /* gray-400 */
-        .table-container::-webkit-scrollbar-thumb:hover { background: #718096; } /* gray-600 */
-        th, td { padding: 0.75rem 1rem; } /* py-3 px-4 */
-        thead { position: sticky; top: 0; z-index: 10; }
-        /* Gain/Loss text colors */
-        .text-gain { color: #10B981; } /* Emerald 500 */
-        .text-loss { color: #EF4444; } /* Red 500 */
+        /* Styles remain the same */
+        .table-container::-webkit-scrollbar { height: 8px; } .table-container::-webkit-scrollbar-track { background: #f1f1f1; border-radius: 10px; } .table-container::-webkit-scrollbar-thumb { background: #a0aec0; border-radius: 10px; } .table-container::-webkit-scrollbar-thumb:hover { background: #718096; }
+        thead { position: sticky; top: 0; z-index: 10; background-color: #f3f4f6; } tbody tr { border-bottom: 1px solid #e5e7eb; } tbody tr:last-child { border-bottom: none; } tbody tr:hover { background-color: #f9fafb; }
+        .icon-sm { width: 0.875em; height: 0.875em; display: inline-block; vertical-align: -0.1em; margin-left: 0.25rem; } .tabular-nums { font-variant-numeric: tabular-nums; } .collapsible-col { transition: all 0.3s ease-in-out; } .widget-card img { max-width: 100%; height: auto; display: block; margin-top: 0.75rem; border-radius: 0.375rem; } .loading-placeholder, .error-placeholder { display: flex; justify-content: center; align-items: center; min-height: 100px; color: #6b7280; font-style: italic; }
+        .sortable-header { cursor: pointer; user-select: none; } .sort-icon { width: 1em; height: 1em; display: inline-block; vertical-align: -0.125em; margin-left: 4px; transition: color 0.2s; color: #9ca3af; } .sortable-header:hover .sort-icon { color: #6b7280; } .sort-icon.active { color: #4f46e5; }
+        body.public-mode .absolute-value, body.public-mode .absolute-gain-loss { display: none; } body.public-mode .collapsible-col { display: none !important; } body.public-mode .percentage-gain-loss { display: inline-block; }
+        .toggle-active { background-color: #4f46e5 !important; color: white !important; }
+        .rsu-breakdown { display: none; } body.showing-rsu-breakdown .rsu-breakdown { display: grid; }
+        .chart-container { position: relative; height: 300px; width: 100%; }
+        .timeframe-button-group button { padding: 0.25rem 0.75rem; font-size: 0.75rem; line-height: 1rem; border-radius: 0.375rem; background-color: #e5e7eb; color: #374151; margin-right: 0.5rem; transition: background-color 0.2s, color 0.2s; }
+        .timeframe-button-group button:hover { background-color: #d1d5db; }
+        .timeframe-button-group button.active { background-color: #4f46e5; color: white; }
     </style>
 </head>
-<body class="font-sans bg-gray-100 text-gray-800 min-h-screen flex flex-col">
-    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-7xl flex-grow"> <header class="mb-6 text-center">
-            <h1 class="text-3xl font-bold text-gray-900">My Stock Portfolio</h1>
-        </header>
+<body class="font-sans bg-gray-100 text-gray-900 min-h-screen flex flex-col">
+    <div class="container mx-auto p-4 sm:p-6 lg:p-8 max-w-full flex-grow">
+        <header class="mb-8 text-center"> <h1 class="text-4xl font-bold text-indigo-600">Bagholder Oracle</h1> <p class="text-gray-500 text-sm mt-1">Your Personal Portfolio Snapshot</p> </header>
 
-        {% if error_message %}
-        <div class="bg-red-100 border border-red-400 text-red-700 px-4 py-3 rounded-lg relative mb-6" role="alert">
-          <strong class="font-bold">Error:</strong>
-          <span class="block sm:inline">{{ error_message }}</span>
-           {% if portfolio_csv_name %}
-             <p class="text-sm mt-1">Using file: '{{ portfolio_csv_name }}'. Please ensure it has columns: Ticker, Quantity, AvgPurchasePrice (with '.' as decimal separator).</p>
-           {% endif %}
-        </div>
-        {% endif %}
+        {% if error_message %} <div class="bg-red-100 border-l-4 border-red-500 text-red-700 p-4 rounded-md shadow-sm mb-6" role="alert"> <p class="font-bold">Error</p><p>{{ error_message }}</p> {% if portfolio_csv_name %}<p class="text-sm mt-1">Please ensure '{{ portfolio_csv_name }}' exists and has columns: Ticker, Quantity, CostBasis.</p>{% endif %} </div> {% endif %}
 
+        <div class="grid grid-cols-1 lg:grid-cols-3 gap-6">
 
-        <div class="bg-white rounded-lg shadow-md mb-6 table-container">
-            <div class="overflow-x-auto">
-                <table class="min-w-full divide-y divide-gray-200">
-                    <thead class="bg-gray-50">
-                        <tr>
-                            <th scope="col" class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider">Ticker</th>
-                            <th scope="col" class="text-left text-xs font-medium text-gray-500 uppercase tracking-wider hidden sm:table-cell">Name</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Quantity</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Avg. Purch. Price</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Cost Basis</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Current Price</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Current Value</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gain / Loss</th>
-                            <th scope="col" class="text-right text-xs font-medium text-gray-500 uppercase tracking-wider">Gain / Loss %</th>
-                        </tr>
-                    </thead>
-                    <tbody class="bg-white divide-y divide-gray-200">
-                        {% if portfolio %}
-                            {% for stock in portfolio %}
-                            <tr>
-                                <td class="whitespace-nowrap text-sm font-medium text-gray-900">{{ stock.ticker }}</td>
-                                <td class="whitespace-nowrap text-sm text-gray-600 hidden sm:table-cell">{{ stock.short_name }}</td>
-                                <td class="whitespace-nowrap text-sm text-gray-600 text-right">{{ "%.2f"|format(stock.quantity) }}</td>
-                                <td class="whitespace-nowrap text-sm text-gray-600 text-right">{{ stock.currency }} {{ "%.2f"|format(stock.avg_purchase_price) }}</td>
-                                <td class="whitespace-nowrap text-sm text-gray-600 text-right">{{ stock.currency }} {{ "%.2f"|format(stock.cost_basis) }}</td>
-                                <td class="whitespace-nowrap text-sm text-gray-600 text-right">
-                                    {% if stock.current_price > 0 %}
-                                        {{ stock.currency }} {{ "%.2f"|format(stock.current_price) }}
-                                    {% else %}
-                                        <span class="text-red-500">N/A</span>
-                                    {% endif %}
-                                </td>
-                                <td class="whitespace-nowrap text-sm font-semibold text-gray-800 text-right">
-                                     {% if stock.current_value > 0 or stock.current_price == 0 %} {{ stock.currency }} {{ "%.2f"|format(stock.current_value) }}
-                                     {% else %}
-                                         <span class="text-red-500">Error</span>
-                                     {% endif %}
-                                </td>
-                                <td class="whitespace-nowrap text-sm font-semibold text-right {% if stock.gain_loss > 0 %}text-gain{% elif stock.gain_loss < 0 %}text-loss{% else %}text-gray-600{% endif %}">
-                                    {{ stock.currency }} {{ "%+.2f"|format(stock.gain_loss) }} </td>
-                                <td class="whitespace-nowrap text-sm font-semibold text-right {% if stock.gain_loss > 0 %}text-gain{% elif stock.gain_loss < 0 %}text-loss{% else %}text-gray-600{% endif %}">
-                                    {{ "%+.2f"|format(stock.gain_loss_percent) }}%
-                                </td>
-                            </tr>
-                            {% endfor %}
-                        {% else %}
-                            <tr>
-                                <td colspan="9" class="px-4 py-4 text-center text-sm text-gray-500"> {% if not error_message %}
-                                    Your portfolio appears empty or could not be loaded. Check '{{ portfolio_csv_name }}'.
-                                    {% else %}
-                                    Portfolio data could not be displayed. See error message above.
-                                    {% endif %}
-                                </td>
-                            </tr>
-                        {% endif %}
-                    </tbody>
-                </table>
+            <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-2">
+                 {% if portfolio %}
+                     <article class="flex items-end justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm widget-card"> <div class="flex items-center gap-4"> <span class="hidden rounded-full bg-indigo-100 p-3 text-indigo-600 sm:block"> <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/gem.svg" alt="Value" class="h-6 w-6"/> </span> <div> <p class="text-sm text-gray-500">Total Current Value</p> <p class="text-2xl font-medium text-gray-900 tabular-nums absolute-value"> {{ primary_currency }} {{ "%.2f"|format(total_value) }}* </p> <p class="text-sm text-gray-500 mt-1 tabular-nums absolute-value"> (Cost: {{ primary_currency }} {{ "%.2f"|format(total_cost_basis) }}*) </p> </div> </div> </article>
+                     <article class="flex items-end justify-between rounded-lg border border-gray-200 bg-white p-6 shadow-sm widget-card"> <div class="flex items-center gap-4"> <span class="hidden rounded-full {% if total_gain_loss >= 0 %}bg-emerald-100 text-emerald-600{% else %}bg-red-100 text-red-600{% endif %} p-3 sm:block"> <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/{% if total_gain_loss >= 0 %}trending-up{% else %}trending-down{% endif %}.svg" alt="Trend" class="h-6 w-6"/> </span> <div> <p class="text-sm text-gray-500">Total Gain / Loss</p> <p class="text-2xl font-medium tabular-nums {% if total_gain_loss >= 0 %}text-gain{% else %}text-loss{% endif %} absolute-gain-loss"> {{ primary_currency }} {{ "%+.2f"|format(total_gain_loss) }}* </p> </div> </div> </article>
+                    <p class="text-center text-xs text-gray-500 md:col-span-2">*Note: Totals mix currencies.</p>
+                 {% else %} <div class="md:col-span-2 bg-white rounded-lg shadow-md p-5 text-center text-gray-500">Portfolio summary unavailable.</div> {% endif %}
             </div>
-        </div>
 
-        {% if portfolio %}
-        <div class="grid grid-cols-1 md:grid-cols-3 gap-4 mb-6">
-             <div class="bg-white text-gray-700 rounded-lg shadow p-4 text-center">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-1">Total Cost Basis</h2>
-                <p class="text-2xl font-bold">
-                    {{ primary_currency }} {{ "%.2f"|format(total_cost_basis) }}*
-                </p>
+            <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-4 sm:gap-6 mb-6 rsu-breakdown">
+                <article class="flex items-end justify-between rounded-lg border border-gray-100 bg-white p-5 shadow-sm widget-card"> <div class="flex items-center gap-4"> <span class="hidden rounded-full {% if non_rsu_total_gain_loss >= 0 %}bg-emerald-100 text-emerald-600{% else %}bg-red-100 text-red-600{% endif %} p-3 sm:block"> <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/briefcase.svg" alt="Non-RSU" class="h-5 w-5"/> </span> <div> <p class="text-sm text-gray-500">Non-FAANG Gain/Loss</p> <p class="text-xl font-medium tabular-nums {% if non_rsu_total_gain_loss >= 0 %}text-gain{% else %}text-loss{% endif %} absolute-gain-loss"> {{ primary_currency }} {{ "%+.2f"|format(non_rsu_total_gain_loss) }}* </p> <p class="text-xs text-gray-400 mt-1 tabular-nums absolute-value"> (Cost: {{ "%.2f"|format(non_rsu_total_cost_basis) }}* )</p> </div> </div> </article>
+                <article class="flex items-end justify-between rounded-lg border border-gray-100 bg-white p-5 shadow-sm widget-card"> <div class="flex items-center gap-4"> <span class="hidden rounded-full {% if rsu_total_gain_loss >= 0 %}bg-emerald-100 text-emerald-600{% else %}bg-red-100 text-red-600{% endif %} p-3 sm:block"> <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/gift.svg" alt="RSU" class="h-5 w-5"/> </span> <div> <p class="text-sm text-gray-500">FAANG RSU Gain/Loss</p> <p class="text-xl font-medium tabular-nums {% if rsu_total_gain_loss >= 0 %}text-gain{% else %}text-loss{% endif %} absolute-gain-loss"> {{ primary_currency }} {{ "%+.2f"|format(rsu_total_gain_loss) }}* </p> <p class="text-xs text-gray-400 mt-1 tabular-nums absolute-value"> (Cost: {{ "%.2f"|format(rsu_total_cost_basis) }}* )</p> </div> </div> </article>
             </div>
-             <div class="bg-white rounded-lg shadow p-4 text-center {% if total_gain_loss > 0 %}border-t-4 border-gain{% elif total_gain_loss < 0 %}border-t-4 border-loss{% else %}border-t-4 border-gray-300{% endif %}">
-                <h2 class="text-sm font-semibold uppercase tracking-wider text-gray-500 mb-1">Total Gain / Loss</h2>
-                <p class="text-2xl font-bold {% if total_gain_loss > 0 %}text-gain{% elif total_gain_loss < 0 %}text-loss{% endif %}">
-                    {{ primary_currency }} {{ "%+.2f"|format(total_gain_loss) }}*
-                </p>
-            </div>
-             <div class="bg-gradient-to-r from-blue-500 to-indigo-600 text-white rounded-lg shadow-lg p-4 text-center">
-                <h2 class="text-lg font-semibold uppercase tracking-wider mb-1">Total Current Value</h2>
-                <p class="text-3xl font-bold">
-                    {{ primary_currency }} {{ "%.2f"|format(total_value) }}*
-                </p>
-            </div>
-        </div>
-        <p class="text-center text-xs text-gray-500 mb-6">*Note: Totals are approximate and mix different currencies (e.g., EUR + USD). They are not financially precise without currency conversion.</p>
-        {% endif %}
 
-    </div> <footer class="mt-auto text-center text-xs text-gray-500 py-4 bg-gray-100">
-        Data fetched using yfinance. Refresh the page to update prices.
+             <div class="lg:col-span-3 grid grid-cols-1 md:grid-cols-2 gap-6 mb-6">
+                 <div class="bg-white rounded-lg shadow-md p-5 widget-card"> <div class="flex justify-between items-center mb-3 flex-wrap gap-2"> <h2 class="text-lg font-semibold text-gray-700">Portfolio Value History*</h2> <div class="timeframe-button-group" id="value-chart-timeframe"> <button data-period="1m">1M</button> <button data-period="6m">6M</button> <button data-period="ytd">YTD</button> <button data-period="1y" class="active">1Y</button> <button data-period="2y">2Y</button> <button data-period="5y">5Y</button> <button data-period="max">Max</button> </div> </div> <div class="chart-container"> <canvas id="valueChart"></canvas> </div> <p class="text-xs text-gray-500 mt-2">*Simplified: Shows historical value of *current* holdings & quantity, relative to *current* cost basis. Ignores past trades & currency fluctuations.</p> </div>
+                 <div class="bg-white rounded-lg shadow-md p-5 widget-card"> <div class="flex justify-between items-center mb-3 flex-wrap gap-2"> <h2 class="text-lg font-semibold text-gray-700">Portfolio Gain/Loss History*</h2> <div class="timeframe-button-group" id="gain-chart-timeframe"> <button data-period="1m">1M</button> <button data-period="6m">6M</button> <button data-period="ytd">YTD</button> <button data-period="1y" class="active">1Y</button> <button data-period="2y">2Y</button> <button data-period="5y">5Y</button> <button data-period="max">Max</button> </div> </div> <div class="chart-container"> <canvas id="gainLossChart"></canvas> </div> <p class="text-xs text-gray-500 mt-2">*Simplified: Shows historical gain/loss of *current* holdings & quantity, relative to *current* cost basis. Ignores past trades & currency fluctuations.</p> </div>
+             </div>
+
+            <div class="lg:col-span-2">
+                <div class="flex justify-between items-center mb-4 flex-wrap gap-2"> <h2 class="text-xl font-semibold text-gray-700 mr-auto">Holdings</h2> <button id="togglePublicModeBtn" class="px-3 py-1.5 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors shadow-sm">Public Mode</button> <button id="toggleRsuBtn" class="px-3 py-1.5 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors shadow-sm">Hide FAANG RSU</button> <button id="toggleColumnsBtn" class="px-3 py-1.5 text-xs bg-gray-200 text-gray-700 rounded hover:bg-gray-300 transition-colors shadow-sm toggle-button">Toggle Details</button> </div>
+                <div class="bg-white rounded-lg shadow-md table-container widget-card"> <div class="overflow-x-auto"> <table id="portfolio-table" class="min-w-full divide-y divide-gray-200"> <thead class="bg-gray-100"> <tr> <th scope="col" class="px-4 py-3 text-left text-xs font-semibold text-gray-600 uppercase tracking-wider sortable-header" data-sort-key="ticker" data-sort-dir="asc">Ticker <span class="sort-icon">▲</span></th> <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider collapsible-col hidden absolute-value">Quantity</th> <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider collapsible-col hidden sm:table-cell hidden absolute-value">Avg. Purch. Price</th> <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider collapsible-col hidden lg:table-cell hidden absolute-value">Cost Basis</th> <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider sortable-header absolute-value" data-sort-key="current_price" data-sort-dir="none">Current Price <span class="sort-icon">-</span></th> <th scope="col" class="px-4 py-3 text-right text-xs font-semibold text-gray-600 uppercase tracking-wider sortable-header" data-sort-key="gain_loss_percent" data-sort-dir="none">Value / Gain % <span class="sort-icon">-</span></th> </tr> </thead> <tbody id="portfolio-tbody" class="bg-white divide-y divide-gray-100"> {% if portfolio %} {% for stock in portfolio %} <tr data-ticker="{{ stock.ticker }}" data-current-price="{{ stock.current_price if stock.current_price is not none else 0 }}" data-gain-loss-percent="{{ stock.gain_loss_percent if stock.gain_loss_percent is not none else -999999 }}" data-rsu="{{ 'true' if stock.is_rsu else 'false' }}" class="portfolio-row"> <td class="px-4 py-3 whitespace-nowrap text-sm font-medium text-gray-900">{{ stock.ticker }}</td> <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right tabular-nums collapsible-col hidden absolute-value">{{ "%.2f"|format(stock.quantity) }}</td> <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right tabular-nums collapsible-col hidden sm:table-cell hidden absolute-value">{{ stock.currency }} {{ "%.2f"|format(stock.avg_purchase_price) }}</td> <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right tabular-nums collapsible-col hidden lg:table-cell hidden absolute-value">{{ stock.currency }} {{ "%.2f"|format(stock.cost_basis) }}</td> <td class="px-4 py-3 whitespace-nowrap text-sm text-gray-600 text-right tabular-nums absolute-value"> {% if stock.current_price > 0 %} {{ stock.currency }} {{ "%.2f"|format(stock.current_price) }} {% else %} <span class="text-gray-400">N/A</span> {% endif %} </td> <td class="px-4 py-3 whitespace-nowrap text-sm text-right tabular-nums"> <div class="font-semibold text-gray-800 absolute-value"> {% if stock.current_value > 0 or stock.current_price == 0 %} {{ stock.currency }} {{ "%.2f"|format(stock.current_value) }} {% else %} <span class="text-red-500">Error</span> {% endif %} </div> <div class="text-xs {% if stock.gain_loss > 0 %}text-gain{% elif stock.gain_loss < 0 %}text-loss{% else %}text-gray-500{% endif %}"> <span class="absolute-gain-loss"> {{ "%+.2f"|format(stock.gain_loss) }} </span> <span class="percentage-gain-loss"> ({{ "%+.2f"|format(stock.gain_loss_percent) }}%) </span> {% if stock.gain_loss > 0 %} <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/trending-up.svg" alt="Up" class="icon-sm text-gain"/> {% elif stock.gain_loss < 0 %} <img src="https://cdn.jsdelivr.net/npm/lucide-static@latest/icons/trending-down.svg" alt="Down" class="icon-sm text-loss"/> {% endif %} </div> </td> </tr> {% endfor %} {% else %} <tr> <td colspan="6" class="px-4 py-6 text-center text-sm text-gray-500"> {% if not error_message %} Your portfolio appears empty. Check '{{ portfolio_csv_name }}'. {% else %} Portfolio data could not be displayed. See error message above. {% endif %} </td> </tr> {% endif %} </tbody> </table> </div> </div> </div>
+
+            <div class="lg:col-span-1"> <div class="bg-white rounded-lg shadow-md p-5 widget-card"> <h2 class="text-xl font-semibold text-gray-700 mb-3">Meme of the Day (WSB)</h2> <div id="meme-widget-content"> <div class="loading-placeholder">Loading meme...</div> <div class="error-placeholder hidden">Could not load meme.</div> <div class="meme-data hidden"> <h4 class="text-sm font-medium text-gray-800 mb-2" id="meme-title"></h4> <a id="meme-link" href="#" target="_blank" rel="noopener noreferrer"> <img id="meme-image" src="https://placehold.co/600x400/EEE/333?text=Loading..." alt="Meme" onerror="this.onerror=null; this.src='https://placehold.co/600x400/EEE/333?text=Image+Error'; this.closest('a').removeAttribute('href');"> </a> <p class="text-xs text-gray-500 mt-2">From: <span id="meme-subreddit"></span> by <span id="meme-author"></span></p> </div> </div> </div> </div>
+
+        </div> </div> <footer class="mt-auto text-center text-xs text-gray-500 py-4 bg-gray-100 border-t border-gray-200">
+        Data fetched using yfinance. Prices updated on page load. Current time: <span id="currentTime">{{ current_time }}</span>
+        <button onclick="window.location.reload();" class="ml-4 px-2 py-1 text-xs bg-indigo-100 text-indigo-700 rounded hover:bg-indigo-200 transition-colors">Refresh</button>
     </footer>
+
+    <script>
+        const valueChartRawData = {{ value_chart_data_json | safe if value_chart_data_json else '{}' }};
+        const gainChartRawData = {{ gain_chart_data_json | safe if gain_chart_data_json else '{}' }};
+    </script>
+
+    <script>
+        // --- Shared State & Helper ---
+        const appState = { detailsHidden: localStorage.getItem('portfolioColumnsHidden') === 'true', rsuHidden: localStorage.getItem('portfolioRsuHidden') === 'true', publicMode: localStorage.getItem('portfolioPublicMode') === 'true' };
+        if (localStorage.getItem('portfolioRsuHidden') === null) { appState.rsuHidden = true; localStorage.setItem('portfolioRsuHidden', 'true'); }
+        function updateButtonAppearance(button, isActive) { if (!button) return; if (isActive) { button.classList.add('toggle-active'); } else { button.classList.remove('toggle-active'); } }
+
+        // --- Initialize Chart Variables ---
+        let valueHistoryChart = null; let gainHistoryChart = null;
+        let fullChartData = { labels: valueChartRawData.labels || [], values: valueChartRawData.datasets && valueChartRawData.datasets[0] ? valueChartRawData.datasets[0].data : [], gains: gainChartRawData.datasets && gainChartRawData.datasets[0] ? gainChartRawData.datasets[0].data : [] };
+
+        // --- Collapsible Columns ---
+        document.addEventListener('DOMContentLoaded', function() { /* ... same ... */ const toggleBtn = document.getElementById('toggleColumnsBtn'); const table = document.getElementById('portfolio-table'); if (!toggleBtn || !table) return; const columnIndicesToToggle = [1, 2, 3]; /* Indices shifted due to Name column removal */ const applyDetailsVisibility = (shouldBeHidden) => { const headers = table.querySelectorAll('thead th'); const rows = table.querySelectorAll('tbody tr.portfolio-row'); if (headers.length <= Math.max(...columnIndicesToToggle)) { return; } columnIndicesToToggle.forEach(index => { if (headers[index]) { headers[index].classList.toggle('hidden', shouldBeHidden); headers[index].classList.add('collapsible-col'); } rows.forEach(row => { if(row.cells.length > index) { const cell = row.cells[index]; if (cell) { cell.classList.toggle('hidden', shouldBeHidden); cell.classList.add('collapsible-col'); } } }); }); const emptyRowTd = table.querySelector('tbody td[colspan]'); if (emptyRowTd) { const visibleColumnCount = Array.from(headers).filter(th => !th.classList.contains('hidden')).length; emptyRowTd.colSpan = visibleColumnCount > 0 ? visibleColumnCount : 1; } toggleBtn.textContent = shouldBeHidden ? 'Show Details' : 'Hide Details'; updateButtonAppearance(toggleBtn, !shouldBeHidden); }; applyDetailsVisibility(appState.detailsHidden); toggleBtn.addEventListener('click', () => { appState.detailsHidden = !appState.detailsHidden; applyDetailsVisibility(appState.detailsHidden); localStorage.setItem('portfolioColumnsHidden', appState.detailsHidden); }); });
+
+        // --- Meme Widget ---
+        document.addEventListener('DOMContentLoaded', function() { /* ... same ... */ const memeApiUrl = 'https://meme-api.com/gimme/wallstreetbets/1'; const memeContent = document.getElementById('meme-widget-content'); if (!memeContent) return; const loadingEl = memeContent.querySelector('.loading-placeholder'); const errorEl = memeContent.querySelector('.error-placeholder'); const memeDataEl = memeContent.querySelector('.meme-data'); const memeTitleEl = document.getElementById('meme-title'); const memeImageEl = document.getElementById('meme-image'); const memeLinkEl = document.getElementById('meme-link'); const memeSubredditEl = document.getElementById('meme-subreddit'); const memeAuthorEl = document.getElementById('meme-author'); fetch(memeApiUrl) .then(response => { if (!response.ok) { throw new Error(`HTTP error! status: ${response.status}`); } return response.json(); }) .then(data => { console.log('Meme API Response:', data); let meme = null; if (data && Array.isArray(data.memes) && data.memes.length > 0) { meme = data.memes[0]; } else if (data && data.url && data.title) { meme = data; } if (meme && meme.url && meme.title) { if(meme.nsfw === true || meme.spoiler === true) { throw new Error('Fetched meme was marked NSFW or Spoiler.'); } memeTitleEl.textContent = meme.title; memeImageEl.src = meme.url; memeImageEl.alt = meme.title; memeLinkEl.href = meme.postLink || '#'; memeSubredditEl.textContent = meme.subreddit || 'N/A'; memeAuthorEl.textContent = meme.author || 'N/A'; loadingEl.classList.add('hidden'); errorEl.classList.add('hidden'); memeDataEl.classList.remove('hidden'); } else { throw new Error('Invalid meme data received'); } }) .catch(error => { console.error('Error fetching meme:', error); loadingEl.classList.add('hidden'); memeDataEl.classList.add('hidden'); errorEl.textContent = `Error loading meme: ${error.message}`; errorEl.classList.remove('hidden'); }); });
+
+        // --- Table Sorting ---
+        document.addEventListener('DOMContentLoaded', function() { const table = document.getElementById('portfolio-table'); const tbody = document.getElementById('portfolio-tbody'); if (!table || !tbody) return; const headers = table.querySelectorAll('thead th.sortable-header'); const getCellValue = (tr, sortKey) => { switch(sortKey) { case 'ticker': return tr.dataset.ticker?.toLowerCase() || ''; case 'current_price': return parseFloat(tr.dataset.currentPrice) || 0; case 'gain_loss_percent': return parseFloat(tr.dataset.gainLossPercent) || -999999; default: return ''; } }; const updateIcons = (activeHeader, direction) => { headers.forEach(header => { const icon = header.querySelector('.sort-icon'); if (!icon) return; if (header === activeHeader) { icon.textContent = direction === 'asc' ? '▲' : '▼'; icon.classList.add('active'); } else { header.dataset.sortDir = 'none'; icon.textContent = '-'; icon.classList.remove('active'); } }); }; headers.forEach(header => { header.addEventListener('click', () => { const sortKey = header.dataset.sortKey; const currentDir = header.dataset.sortDir; let newDir = 'asc'; if (currentDir === 'asc') { newDir = 'desc'; } else { newDir = 'asc'; } header.dataset.sortDir = newDir; updateIcons(header, newDir); const rows = Array.from(tbody.querySelectorAll('tr.portfolio-row')); rows.sort((trA, trB) => { const valA = getCellValue(trA, sortKey); const valB = getCellValue(trB, sortKey); if (typeof valA === 'string') { return newDir === 'asc' ? valA.localeCompare(valB) : valB.localeCompare(valA); } else { const numA = isNaN(valA) ? (newDir === 'asc' ? Infinity : -Infinity) : valA; const numB = isNaN(valB) ? (newDir === 'asc' ? Infinity : -Infinity) : valB; return newDir === 'asc' ? numA - numB : numB - numA; } }); rows.forEach(row => tbody.appendChild(row)); }); }); headers.forEach(header => { const icon = header.querySelector('.sort-icon'); if (!icon) return; if (header.dataset.sortDir === 'asc') { icon.textContent = '▲'; icon.classList.add('active'); } else if (header.dataset.sortDir === 'desc') { icon.textContent = '▼'; icon.classList.add('active'); } else { icon.textContent = '-'; icon.classList.remove('active'); } }); });
+
+        // --- Public Mode Toggle ---
+        document.addEventListener('DOMContentLoaded', function() { const toggleBtn = document.getElementById('togglePublicModeBtn'); if (!toggleBtn) return; const applyPublicMode = (isPublic) => { document.body.classList.toggle('public-mode', isPublic); updateButtonAppearance(toggleBtn, isPublic); }; applyPublicMode(appState.publicMode); toggleBtn.addEventListener('click', () => { appState.publicMode = !appState.publicMode; applyPublicMode(appState.publicMode); localStorage.setItem('portfolioPublicMode', appState.publicMode); }); });
+
+        // --- Hide RSU Toggle ---
+        document.addEventListener('DOMContentLoaded', function() { const toggleBtn = document.getElementById('toggleRsuBtn'); const tableBody = document.getElementById('portfolio-tbody'); const rsuBreakdownContainer = document.querySelector('.rsu-breakdown'); if (!toggleBtn || !tableBody || !rsuBreakdownContainer) return; const applyRsuVisibility = (shouldHide) => { const rsuRows = tableBody.querySelectorAll('tr[data-rsu="true"]'); rsuRows.forEach(row => { row.classList.toggle('hidden', shouldHide); }); updateButtonAppearance(toggleBtn, shouldHide); document.body.classList.toggle('showing-rsu-breakdown', shouldHide); }; applyRsuVisibility(appState.rsuHidden); toggleBtn.addEventListener('click', () => { appState.rsuHidden = !appState.rsuHidden; applyRsuVisibility(appState.rsuHidden); localStorage.setItem('portfolioRsuHidden', appState.rsuHidden); }); });
+
+        // --- Charting Logic ---
+        document.addEventListener('DOMContentLoaded', function() {
+            // --- Check if data exists and has labels ---
+            if (!valueChartRawData || !gainChartRawData || !valueChartRawData.labels || valueChartRawData.labels.length === 0) { console.warn("Chart data not found, invalid, or empty."); document.querySelectorAll('.chart-container').forEach(el => el.innerHTML = '<div class="loading-placeholder">Chart data unavailable. Check server logs.</div>'); return; }
+            // Store full dataset
+            fullChartData.labels = valueChartRawData.labels || []; fullChartData.values = valueChartRawData.datasets && valueChartRawData.datasets[0] ? valueChartRawData.datasets[0].data : []; fullChartData.gains = gainChartRawData.datasets && gainChartRawData.datasets[0] ? gainChartRawData.datasets[0].data : [];
+             if (fullChartData.labels.length === 0) { console.warn("Extracted chart data is empty."); document.querySelectorAll('.chart-container').forEach(el => el.innerHTML = '<div class="loading-placeholder">No historical data points found.</div>'); return; }
+
+            const valueCtx = document.getElementById('valueChart')?.getContext('2d'); const gainCtx = document.getElementById('gainLossChart')?.getContext('2d');
+            if (!valueCtx || !gainCtx) { console.error("Could not get chart canvas context."); return; }
+
+            const chartOptions = { responsive: true, maintainAspectRatio: false, scales: { x: { type: 'time', time: { unit: 'month' }, ticks: { source: 'auto', maxRotation: 0, autoSkip: true, padding: 10 } }, y: { beginAtZero: false, ticks: { callback: function(value, index, values) { return new Intl.NumberFormat('en-US', { style: 'currency', currency: '{{ primary_currency }}', notation: 'compact', maximumFractionDigits: 1 }).format(value); } } } }, plugins: { legend: { display: false }, tooltip: { mode: 'index', intersect: false, position: 'nearest', titleSpacing: 6, bodySpacing: 4, padding: 10 } }, interaction: { mode: 'nearest', axis: 'x', intersect: false } };
+
+            // Create Chart Instances with conditional logic for Gain/Loss chart
+            try {
+                 valueHistoryChart = new Chart(valueCtx, { type: 'line', data: { labels: [], datasets: [valueChartRawData.datasets[0]] }, options: chartOptions });
+                 gainHistoryChart = new Chart(gainCtx, {
+                     type: 'line',
+                     data: {
+                         labels: [], // Initial labels
+                         datasets: [{
+                             ...gainChartRawData.datasets[0], // Spread basic props like label, borderColor etc.
+                             // --- ADD JS LOGIC FOR BACKGROUND/FILL ---
+                             backgroundColor: function(context) {
+                                 const index = context.dataIndex;
+                                 if (index === undefined || !context.dataset || !context.dataset.data || index >= context.dataset.data.length) return 'transparent'; // Safety check
+                                 const value = context.dataset.data[index];
+                                 if (value === null || value === undefined) return 'transparent';
+                                 return value < 0 ? 'rgba(239, 68, 68, 0.1)' : 'rgba(16, 185, 129, 0.1)'; // Red below 0, Green above/at 0
+                             },
+                             fill: {
+                                 target: 'origin',
+                                 above: 'rgba(16, 185, 129, 0.1)', // Color for area above 0
+                                 below: 'rgba(239, 68, 68, 0.1)'  // Color for area below 0
+                             }
+                             // --- END JS LOGIC ---
+                         }]
+                     },
+                     options: JSON.parse(JSON.stringify(chartOptions)) // Deep copy options
+                 });
+                 console.log("Charts initialized.");
+            } catch (e) { console.error("Error initializing charts:", e); document.querySelectorAll('.chart-container').forEach(el => el.innerHTML = '<div class="error-placeholder">Error initializing chart.</div>'); return; }
+
+            // --- Timeframe Button Logic ---
+            const timeframeButtonsValue = document.querySelectorAll('#value-chart-timeframe button'); const timeframeButtonsGain = document.querySelectorAll('#gain-chart-timeframe button');
+            const filterDataByPeriod = (period) => { /* ... same logic ... */ const endDate = new Date(fullChartData.labels[fullChartData.labels.length - 1]); let startDate; const now = new Date(); switch(period) { case '1m': startDate = new Date(endDate); startDate.setMonth(endDate.getMonth() - 1); break; case '6m': startDate = new Date(endDate); startDate.setMonth(endDate.getMonth() - 6); break; case 'ytd': startDate = new Date(now.getFullYear(), 0, 1); break; case '1y': startDate = new Date(endDate); startDate.setFullYear(endDate.getFullYear() - 1); break; case '2y': startDate = new Date(endDate); startDate.setFullYear(endDate.getFullYear() - 2); break; case '5y': startDate = new Date(endDate); startDate.setFullYear(endDate.getFullYear() - 5); break; case 'max': default: startDate = new Date(fullChartData.labels[0]); break; } const firstDate = new Date(fullChartData.labels[0]); if (startDate < firstDate) { startDate = firstDate; } const startIndex = fullChartData.labels.findIndex(label => new Date(label) >= startDate); const filteredLabels = fullChartData.labels.slice(startIndex); const filteredValues = fullChartData.values.slice(startIndex); const filteredGains = fullChartData.gains.slice(startIndex); return { labels: filteredLabels, values: filteredValues, gains: filteredGains }; };
+            const updateChart = (chart, labels, data) => { /* ... same logic ... */ if (!chart) return; chart.data.labels = labels; chart.data.datasets[0].data = data; const days = labels.length > 1 ? (new Date(labels[labels.length - 1]) - new Date(labels[0])) / (1000 * 60 * 60 * 24) : 0; if (days <= 35) chart.options.scales.x.time.unit = 'day'; else if (days <= 190) chart.options.scales.x.time.unit = 'week'; else if (days <= 740) chart.options.scales.x.time.unit = 'month'; else chart.options.scales.x.time.unit = 'year'; chart.update(); };
+            const handleTimeframeClick = (event, chart, dataSetKey) => { /* ... same logic ... */ const button = event.target; const period = button.dataset.period; button.closest('.timeframe-button-group').querySelectorAll('button').forEach(btn => btn.classList.remove('active')); button.classList.add('active'); const filteredData = filterDataByPeriod(period); updateChart(chart, filteredData.labels, filteredData[dataSetKey]); };
+            timeframeButtonsValue.forEach(button => { button.addEventListener('click', (e) => handleTimeframeClick(e, valueHistoryChart, 'values')); }); timeframeButtonsGain.forEach(button => { button.addEventListener('click', (e) => handleTimeframeClick(e, gainHistoryChart, 'gains')); });
+
+            // Initial chart load (default to 1Y)
+            console.log("Applying initial 1Y filter to charts."); const initialFilteredData = filterDataByPeriod('1y'); updateChart(valueHistoryChart, initialFilteredData.labels, initialFilteredData.values); updateChart(gainHistoryChart, initialFilteredData.labels, initialFilteredData.gains); console.log("Initial chart update complete.");
+        });
+        // --- End Charting Logic ---
+
+    </script>
 
 </body>
 </html>
